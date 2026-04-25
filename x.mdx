@@ -1,0 +1,98 @@
+---
+title: "X (Twitter)"
+description: "Get an X v2 OAuth 2.0 user-context access token plus your numeric user id and handle so Unifounder can publish tweets and threads and read post and account metrics."
+---
+
+Unifounder publishes to X through the v2 API with user-context OAuth 2.0. You give it three things: a bearer token with the right scopes, your account's numeric user id, and your handle.
+
+X tightened API access in 2023, so you'll need at least the **Free** API tier for read plus minimal write, or **Basic** ($100/month) for the volume most missions actually need. Unifounder works with either — the connector noops gracefully on rate-limit errors so a Free-tier ceiling doesn't break a mission.
+
+## Access token
+
+The token must be an OAuth 2.0 user-context bearer token with four scopes:
+
+- `tweet.read` — read tweet metrics.
+- `tweet.write` — publish tweets and threads.
+- `users.read` — read account metrics.
+- `offline.access` — get a refresh token so the connector can rotate without re-pasting.
+
+### Step 1 — Create an X developer project + app
+
+1. Go to [developer.x.com/en/portal/dashboard](https://developer.x.com/en/portal/dashboard) and sign in with the X account you want to publish from.
+2. Create a **Project**, then create an **App** inside it.
+3. In the app's **Settings → User authentication settings**, enable **OAuth 2.0** with:
+   - **Type of App:** Web App, Automated App or Bot
+   - **Callback URL:** `http://localhost` is fine for the token-generation flow (you'll change it later if you wire production OAuth)
+   - **Website URL:** any URL you control
+
+<Note>
+  Make sure the app is set to **Read and Write** in OAuth 2.0 settings. If it's left as Read-only (the default), publishes return `forbidden` even when the token has `tweet.write` in its scope list.
+</Note>
+
+### Step 2 — Generate a user-context token
+
+The fastest path is the OAuth 2.0 PKCE flow via your developer dashboard:
+
+1. In your app, open **Keys and tokens**.
+2. Under **OAuth 2.0**, copy your **Client ID**.
+3. Open [X's user access token guide](https://developer.x.com/en/docs/authentication/oauth-2-0/user-access-token) and follow the PKCE flow — or use a tool like Postman's OAuth 2.0 helper:
+   - **Auth URL:** `https://x.com/i/oauth2/authorize`
+   - **Token URL:** `https://api.x.com/2/oauth2/token`
+   - **Scopes:** `tweet.read tweet.write users.read offline.access`
+4. Sign in with your X account, approve the scopes, and copy the **access token** (not the refresh token) X returns.
+
+<Tip>
+  User-context tokens expire after **2 hours** unless you also store the refresh token and rotate it. For the paste flow, regenerate when you see `expired_token` errors. Adding `offline.access` to your scopes returns a refresh token Unifounder can use to extend the session.
+</Tip>
+
+### Step 3 — Paste into Unifounder
+
+In the **Connect X** modal, paste the token into the **Access token** field. Then continue to [User id](#user-id) and [Handle](#handle) below.
+
+## User id
+
+X's v2 API uses **numeric user ids** (not handles) for most lookups. Unifounder needs yours so it can fetch your tweets and account metrics.
+
+### How to find it
+
+- **Easiest:** open [tweeterid.com](https://tweeterid.com/), paste your handle, copy the numeric id.
+- **Via API:** `GET https://api.x.com/2/users/by/username/<handle>` (with your bearer) returns the id.
+
+Paste digits only. For example, `1234567890`.
+
+## Handle
+
+Your `@` username, **without** the `@`. Used for display and for constructing tweet URLs in the mission timeline.
+
+For example, if your profile is `x.com/yourbrand`, paste `yourbrand`.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="expired_token">
+    User-context tokens last 2 hours. Re-generate via Step 2 and re-paste in the connectors panel. Or include `offline.access` in your scopes and let Unifounder rotate the refresh token automatically.
+  </Accordion>
+  <Accordion title="scope_missing (tweet.write not granted)">
+    Re-do the OAuth flow with all four scopes checked: `tweet.read`, `tweet.write`, `users.read`, `offline.access`.
+  </Accordion>
+  <Accordion title="rate_limited">
+    X enforces both per-app and per-user rate limits, and the Free tier is strict. If you hit the wall, upgrade to Basic in the developer portal. The mission timeline will surface the retry-after window when this happens.
+  </Accordion>
+  <Accordion title="forbidden on publish">
+    Your developer project's app is in read-only mode. Set OAuth 2.0 settings (Step 1) to Read and Write, regenerate the token, and re-paste.
+  </Accordion>
+  <Accordion title="user_id mismatch on metrics">
+    The user id you pasted doesn't match the token's authenticated user. Re-check the numeric id at [tweeterid.com](https://tweeterid.com/) — it has to be the same handle that authorized the token.
+  </Accordion>
+</AccordionGroup>
+
+## What Unifounder reads vs writes
+
+| Capability | Tool slug | Scope |
+| --- | --- | --- |
+| Publish a tweet | `x.publish_tweet` | `tweet.write` |
+| Publish a thread (chained replies) | `x.publish_thread` | `tweet.write` |
+| Read tweet metrics (impressions, likes, replies, retweets, bookmarks) | background | `tweet.read` |
+| Read account metrics (followers, profile views) | background | `users.read` |
+
+Unifounder only acts as the user identified by the token plus user id. It never sends DMs, follows or unfollows accounts, or interacts with other users beyond replying to its own thread chain.
