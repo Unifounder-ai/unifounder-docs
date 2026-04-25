@@ -1,5 +1,92 @@
 ---
 title: "LinkedIn"
+description: "Get a LinkedIn Marketing access token plus your company-page URN so Unifounder can publish company posts and read post and page metrics."
 ---
 
-this is a file 
+Unifounder publishes to LinkedIn through the Marketing Developer Platform. You give it two things: an OAuth 2.0 access token with the right scopes, and the URN of the company page you want to post on behalf of.
+
+The whole setup takes about 15 minutes once your LinkedIn developer app is approved. App approval can take a few business days, so start there first.
+
+## Access token
+
+The token must be an OAuth 2.0 access token with two scopes:
+
+- `w_organization_social` — publish posts.
+- `r_organization_social` — read post and page metrics.
+
+### Step 1 — Create or pick a LinkedIn developer app
+
+1. Go to [linkedin.com/developers/apps](https://www.linkedin.com/developers/apps) and sign in with the LinkedIn account that is a page admin of the company you want to post on.
+2. Click "Create app" or pick an existing one.
+3. Associate the app with your company page. You must be an admin of that page for this to work.
+
+### Step 2 — Request Marketing Developer Platform access
+
+1. Open your app and go to the "Products" tab.
+2. Find "Marketing Developer Platform" and click "Request access". Fill out the use-case form. Something like "automated company-page publishing for our internal tooling" is fine.
+3. Wait for approval. This is the slow part — usually 1 to 3 business days. You will get an email when it lands.
+
+<Note>
+  Until LinkedIn approves your app, the `w_organization_social` scope is not available and Unifounder will reject the token with a `permission_denied` error.
+</Note>
+
+### Step 3 — Generate an access token
+
+1. In your app, open the "Auth" tab and copy your Client ID and Client Secret.
+2. Open LinkedIn's OAuth 2.0 token generator at [linkedin.com/developers/tools/oauth/token-generator](https://www.linkedin.com/developers/tools/oauth/token-generator).
+3. Pick your app, check both scopes (`w_organization_social` and `r_organization_social`), and click "Request access token".
+4. Sign in with your LinkedIn account when prompted, and copy the access token LinkedIn returns.
+
+<Tip>
+  Tokens generated this way are valid for 60 days. Unifounder warns you in the connectors panel before expiry. To rotate, repeat Step 3 and re-paste.
+</Tip>
+
+### Step 4 — Paste into Unifounder
+
+In the "Connect LinkedIn" modal, paste the token into the "Access token" field. Then continue to "Organization URN" below.
+
+## Organization URN
+
+The URN identifies the company page Unifounder should post on behalf of. It looks like `urn:li:organization:1234567`.
+
+### How to find it
+
+1. Open your company page on LinkedIn at `linkedin.com/company/<your-page>`.
+2. While signed in as a page admin, switch to the Admin view.
+3. Look at the URL. You will see `linkedin.com/company/<page>/admin/dashboard/`. The numeric id in the page slug or in the page-id query string is your organization id.
+4. Prefix it with `urn:li:organization:`. For example, `urn:li:organization:1234567`.
+
+<Tip>
+  Unifounder accepts the bare numeric id too. Paste `1234567` and it will prefix the URN for you.
+</Tip>
+
+### Verify the page-admin link
+
+Unifounder's `linkedin.publish_company_post` only works if the token's user is an admin of the page identified by the URN. If they do not match, LinkedIn returns `permission_denied` and the post step fails.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="expired_token">
+    Token is past 60 days. Repeat Step 3 above and re-paste in the connectors panel.
+  </Accordion>
+  <Accordion title="permission_denied on publish">
+    Your LinkedIn account is not an admin of the company page, or the Marketing Developer Platform request was denied. Re-check Step 1 and Step 2.
+  </Accordion>
+  <Accordion title="rate_limited">
+    LinkedIn throttles publishes per app and per page. Unifounder backs off automatically. The retry surfaces in the mission timeline.
+  </Accordion>
+  <Accordion title="scope_missing">
+    Token does not have `w_organization_social` or `r_organization_social`. Re-generate with the correct scopes checked in Step 3.
+  </Accordion>
+</AccordionGroup>
+
+## What Unifounder reads vs writes
+
+| Capability | Tool slug | Scope |
+| --- | --- | --- |
+| Publish a company post | `linkedin.publish_company_post` | `w_organization_social` |
+| Read post metrics (impressions, likes, comments, shares, clicks) | background | `r_organization_social` |
+| Read page metrics (followers, profile views, weekly impressions) | background | `r_organization_social` |
+
+Unifounder never reads or writes your personal feed. Only the company page identified by the URN.
